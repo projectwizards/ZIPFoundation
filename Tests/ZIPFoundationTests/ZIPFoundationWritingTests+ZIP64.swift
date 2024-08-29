@@ -322,6 +322,31 @@ extension ZIPFoundationTests {
         }
         XCTAssertEqual(entry4.zip64ExtendedInformation?.relativeOffsetOfLocalHeader, entry3OriginalOffset)
     }
+    
+    func testRemoveEntriesFromArchiveWithZIP64EOCD() {
+        // testRemoveEntriesFromArchiveWithZIP64EOCD.zip/
+        //   ├─ data1.random (size: 64 * 32)
+        //   ├─ data2.random (size: 64 * 32)
+        //   ├─ data3.random (size: 64 * 32) [headerID: 1, dataSize: 8, ..0..0, relativeOffsetOfLocalHeader: 4180, ..0]
+        //   ├─ data4.random (size: 64 * 32) [headerID: 1, dataSize: 8, ..0..0, relativeOffsetOfLocalHeader: 6270, ..0]
+        self.mockIntMaxValues()
+        defer { self.resetIntMaxValues() }
+        let archive = self.archive(for: #function, mode: .update)
+        guard let entry = archive["data3.random"] else {
+            XCTFail("Failed to retrieve ZIP64 format entry from archive"); return
+        }
+        do {
+            try archive.removeAllEntries(fromEntry: entry)
+        } catch {
+            XCTFail("Failed to remove entry from archive with error : \(error)")
+        }
+        XCTAssert(archive.checkIntegrity())
+        XCTAssertNotNil(archive.zip64EndOfCentralDirectory)
+        XCTAssertNotNil(archive["data2.random"])
+        XCTAssertNil(archive["data3.random"])
+        XCTAssertNil(archive["data4.random"])
+    }
+
 }
 
 extension Archive {

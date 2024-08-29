@@ -209,9 +209,6 @@ extension ZIPFoundationTests {
 
     func testRemoveUncompressedEntry() {
         let archive = self.archive(for: #function, mode: .update)
-        for entry in archive {
-            print(entry.path)
-        }
         guard let entryToRemove = archive["test/data.random"] else {
             XCTFail("Failed to find entry to remove in uncompressed folder"); return
         }
