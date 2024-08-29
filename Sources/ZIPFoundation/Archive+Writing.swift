@@ -249,6 +249,62 @@ extension Archive {
             self.archiveFile = file
         }
     }
+    
+    /// Removes the given entry and all entries that follow it.
+    ///
+    /// Note: In contrast to remove(), this function does not need to re-write the whole archive as it simply truncates the file before the
+    /// given entry and appends a new central directory.
+    ///
+    /// - Parameters:
+    ///   - entry: The `Entry` at which to start the remove.
+    /// - Throws: An error if the `Entry` is malformed or the receiver is not writable.
+    public func removeAllEntries(fromEntry entry: Entry) throws {
+        guard self.accessMode != .read else { throw ArchiveError.unwritableArchive }
+        let remainingEntries = entries(beforeEntry: entry)
+        guard self.offsetToStartOfCentralDirectory <= .max else { throw ArchiveError.invalidCentralDirectoryOffset }
+        
+        // Rescue all precending entries in the central directory as a data copy
+        let startOfCD = self.offsetToStartOfCentralDirectory
+        let entryCDStartOffset = entry.directoryIndex
+        fseeko(self.archiveFile, off_t(startOfCD), SEEK_SET)
+        let remainingCDSize = entryCDStartOffset - startOfCD
+        let remainingCDData = try Data.readChunk(of: Int(remainingCDSize), from: self.archiveFile)
+        
+        // Truncate everything from the local entry (including the central directory)
+        defer { fflush(self.archiveFile) }
+        let entryLocalStartOffset = entry.centralDirectoryStructure.effectiveRelativeOffsetOfLocalHeader
+        let archiveFD = fileno(self.archiveFile)
+        guard archiveFD != -1, ftruncate(archiveFD, off_t(entryLocalStartOffset)) != -1 else {
+            throw error(fromPOSIXErrorCode: errno)
+        }
+        
+        // Re-append the central directory with the remaining entries
+        let newStartOfCD = entryLocalStartOffset
+        fseeko(self.archiveFile, off_t(0), SEEK_END)
+        _ = try Data.write(chunk: remainingCDData, to: self.archiveFile)
+        
+        // Append the End of Central Directory Record (including ZIP64 End of Central Directory Record/Locator)
+        let startOfEOCD = UInt64(ftello(self.archiveFile))
+        let eocd = try self.writeEndOfCentralDirectory(totalNumberOfEntries: UInt64(remainingEntries.count),
+                                                       sizeOfCentralDirectory: remainingCDSize,
+                                                       offsetOfCentralDirectory: newStartOfCD,
+                                                       offsetOfEndOfCentralDirectory: startOfEOCD)
+        (self.endOfCentralDirectoryRecord, self.zip64EndOfCentralDirectory) = eocd
+    }
+    
+    func error(fromPOSIXErrorCode code: Int32) -> Error {
+        guard let errorCode = POSIXErrorCode(rawValue: code) else { return ArchiveError.unknownError }
+        return POSIXError(errorCode)
+    }
+    
+    func entries(beforeEntry startEntry: Entry) -> [Entry] {
+        var result = [Entry]()
+        for entry in self {
+            if entry == startEntry { break }
+            result.append(entry)
+        }
+        return result
+    }
 }
 
 // MARK: - Private

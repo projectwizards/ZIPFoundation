@@ -209,6 +209,9 @@ extension ZIPFoundationTests {
 
     func testRemoveUncompressedEntry() {
         let archive = self.archive(for: #function, mode: .update)
+        for entry in archive {
+            print(entry.path)
+        }
         guard let entryToRemove = archive["test/data.random"] else {
             XCTFail("Failed to find entry to remove in uncompressed folder"); return
         }
@@ -261,6 +264,38 @@ extension ZIPFoundationTests {
         })
         let readonlyArchive = self.archive(for: #function, mode: .read)
         XCTAssertSwiftError(try readonlyArchive.remove(entryToRemove), throws: Archive.ArchiveError.unwritableArchive)
+    }
+
+    func testRemoveFromEntryUncompressed() {
+        let archive = self.archive(for: #function, mode: .update)
+        guard let entryToRemove = archive["test/faust.txt"] else {
+            XCTFail("Failed to find entry to remove in uncompressed folder"); return
+        }
+        do {
+            try archive.removeAllEntries(fromEntry: entryToRemove)
+        } catch {
+            XCTFail("Failed to remove entries from uncompressed folder archive with error : \(error)")
+        }
+        XCTAssert(archive.checkIntegrity())
+        XCTAssertNotNil(archive["test/empty/"])
+        XCTAssertNil(archive["test/faust.txt"])
+        XCTAssertNil(archive["test/nested/deep/another.random"])
+    }
+
+    func testRemoveFromEntryCompressed() {
+        let archive = self.archive(for: #function, mode: .update)
+        guard let entryToRemove = archive["test/faust.txt"] else {
+            XCTFail("Failed to find entry to remove in uncompressed folder"); return
+        }
+        do {
+            try archive.removeAllEntries(fromEntry: entryToRemove)
+        } catch {
+            XCTFail("Failed to remove entries from uncompressed folder archive with error : \(error)")
+        }
+        XCTAssert(archive.checkIntegrity())
+        XCTAssertNotNil(archive["test/empty/"])
+        XCTAssertNil(archive["test/faust.txt"])
+        XCTAssertNil(archive["test/nested/deep/another.random"])
     }
 
     func testArchiveCreateErrorConditions() {
